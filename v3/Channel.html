@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Regrow — Channel</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: { sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui'], mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'] },
+      colors: { brand: { 50:'#f0fdf4',100:'#dcfce7',200:'#bbf7d0',500:'#22c55e',600:'#16a34a',700:'#15803d',900:'#14532d' } },
+    }}
+  }
+</script>
+<style>
+  body { font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui; }
+  .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 4px; }
+  .card { background:#fff; border-radius:.75rem; border:1px solid #f3f4f6; box-shadow:0 1px 2px 0 rgb(0 0 0 / 0.04); }
+  .badge { display:inline-flex; align-items:center; padding:.125rem .625rem; border-radius:9999px; font-size:.75rem; font-weight:500; }
+  @keyframes slideUp { from { transform: translateY(8px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+  .toast { animation: slideUp 0.2s ease-out; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin 0.7s linear infinite; }
+  @keyframes fadeIn { from { opacity:0; transform: translateY(4px); } to { opacity:1; transform: translateY(0); } }
+  .anim-in { animation: fadeIn 0.25s ease-out backwards; }
+  @keyframes shrink { from { max-height: 800px; opacity:1; } to { max-height: 0; opacity:0; padding-top:0; padding-bottom:0; margin-top:0; margin-bottom:0; } }
+  .removing { animation: shrink 0.25s ease-in forwards; pointer-events:none; overflow:hidden; }
+</style>
+</head>
+<body class="bg-gray-50 text-gray-900 antialiased">
+
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" data-presets="env,react">
+const { useState, useEffect, useMemo, useRef } = React;
+
+const NOW = new Date('2026-04-29T14:30:00');
+const minutesAgo = (m) => new Date(NOW.getTime() - m * 60_000).toISOString();
+const hoursAgo   = (h) => new Date(NOW.getTime() - h * 3600_000).toISOString();
+const daysAgo    = (d) => new Date(NOW.getTime() - d * 86_400_000).toISOString();
+
+// ─── Mock data ──────────────────────────────────────────────────────────────
+
+const CATEGORIES = [
+  { id:'announcement', label:'Pengumuman', color:'bg-amber-100 text-amber-800 ring-amber-200' },
+  { id:'tips',         label:'Tips',       color:'bg-blue-100 text-blue-800 ring-blue-200' },
+  { id:'event',        label:'Acara',      color:'bg-violet-100 text-violet-800 ring-violet-200' },
+  { id:'impact',       label:'Dampak',     color:'bg-brand-100 text-brand-800 ring-brand-200' },
+];
+
+const MOCK_POSTS = [
+  { id:'p1', title:'Kampanye Pickup Sabtu Akbar 2 Mei', category:'event', pinned:true,
+    body:'Akhir pekan ini Regrow mengadakan pickup serentak di 12 titik se-Bandung Raya. Pendaftaran dibuka hingga Jumat pukul 17.00. Setiap pengirim mendapat 1 voucher belanja UMKM lokal.',
+    cover:'#a7f3d0', author:'Tim Regrow', published_at:hoursAgo(3),  views:1284, likes:142 },
+  { id:'p2', title:'5 Cara Memilah Sampah Tekstil di Rumah', category:'tips', pinned:true,
+    body:'Memilah sampah tekstil sebelum dijemput menghemat waktu grading dan meningkatkan harga jual. Mulai dari memisahkan pakaian utuh, kain perca, sampai bahan tidak layak pakai.',
+    cover:'#bfdbfe', author:'Dewi Lestari', published_at:hoursAgo(28), views:892,  likes:78 },
+  { id:'p3', title:'Bandung Utara Hijau Capai 1 Ton di April', category:'impact', pinned:false,
+    body:'Selamat untuk komunitas Bandung Utara Hijau yang berhasil mengumpulkan 1.024 kg pakaian bekas selama April. Sebagian besar masuk grade A dan akan dijual ulang.',
+    cover:'#dcfce7', author:'Tim Regrow', published_at:daysAgo(1),    views:2104, likes:312 },
+  { id:'p4', title:'Workshop Upcycling Tas Belanja', category:'event', pinned:false,
+    body:'Sabtu, 10 Mei. 30 peserta pertama gratis. Lokasi: Co-working Cihampelas. Bawa kemeja bekas atau kain perca minimal 500 gr untuk bahan workshop.',
+    cover:'#fbcfe8', author:'Re-Wear Studio', published_at:daysAgo(2), views:567, likes:42 },
+  { id:'p5', title:'Pemberitahuan: Penyesuaian Tarif Pickup', category:'announcement', pinned:false,
+    body:'Mulai 1 Juni, tarif pickup di luar zona Bandung Raya akan menyesuaikan jarak. Detail bisa dilihat di halaman tarif atau hubungi operator.',
+    cover:'#fde68a', author:'Tim Regrow', published_at:daysAgo(3),    views:1543, likes:24 },
+  { id:'p6', title:'Tips: Menyimpan Pakaian Bekas Tanpa Bau', category:'tips', pinned:false,
+    body:'Cuci dengan sabun ringan, jemur sampai kering, lalu simpan dalam plastik berlubang. Tambahkan silica gel atau koran bekas untuk menyerap kelembapan.',
+    cover:'#ddd6fe', author:'Bu Yati', published_at:daysAgo(5),       views:734,  likes:91 },
+];
+
+// ─── Icons ──────────────────────────────────────────────────────────────────
+
+const Icon = ({ size=16, className='', strokeWidth=2, children }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24"
+       fill="none" stroke="currentColor" strokeWidth={strokeWidth}
+       strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>
+);
+const Leaf       = (p)=><Icon {...p}><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19.2 2.96c.4 2.91.5 5.5 0 8.04C18.27 17.96 14.84 21.45 11 20Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/></Icon>;
+const Package    = (p)=><Icon {...p}><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></Icon>;
+const LayoutGrid = (p)=><Icon {...p}><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></Icon>;
+const Store      = (p)=><Icon {...p}><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/></Icon>;
+const Users      = (p)=><Icon {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></Icon>;
+const Newspaper  = (p)=><Icon {...p}><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></Icon>;
+const Megaphone  = (p)=><Icon {...p}><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/><path d="M10 6h8v4h-8V6Z"/></Icon>;
+const LogOut     = (p)=><Icon {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></Icon>;
+const Bell       = (p)=><Icon {...p}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></Icon>;
+const Search     = (p)=><Icon {...p}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></Icon>;
+const CheckCircle= (p)=><Icon {...p}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></Icon>;
+const XCircle    = (p)=><Icon {...p}><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></Icon>;
+const X          = (p)=><Icon {...p}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></Icon>;
+const Plus       = (p)=><Icon {...p}><path d="M5 12h14"/><path d="M12 5v14"/></Icon>;
+const Pin        = (p)=><Icon {...p}><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></Icon>;
+const Trash      = (p)=><Icon {...p}><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></Icon>;
+const Edit       = (p)=><Icon {...p}><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></Icon>;
+const Eye        = (p)=><Icon {...p}><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></Icon>;
+const Heart      = (p)=><Icon {...p}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></Icon>;
+const Image      = (p)=><Icon {...p}><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></Icon>;
+const Send       = (p)=><Icon {...p}><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></Icon>;
+const RefreshCw  = (p)=><Icon {...p}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></Icon>;
+const MoreH      = (p)=><Icon {...p}><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></Icon>;
+const Clock      = (p)=><Icon {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></Icon>;
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function relativeTime(iso) {
+  const diff = (NOW - new Date(iso)) / 1000;
+  if (diff < 60)     return `${Math.floor(diff)} dtk lalu`;
+  if (diff < 3600)   return `${Math.floor(diff/60)} mnt lalu`;
+  if (diff < 86_400) return `${Math.floor(diff/3600)} jam lalu`;
+  return `${Math.floor(diff/86_400)} hari lalu`;
+}
+const initials = (name) => name.split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase();
+
+// ─── Sidebar ────────────────────────────────────────────────────────────────
+
+const navItems = [
+  { id:'dashboard',   label:'Dashboard',   icon:LayoutGrid },
+  { id:'pickups',     label:'Pickups',     icon:Package, badge:2 },
+  { id:'marketplace', label:'Marketplace', icon:Store },
+  { id:'communities', label:'Komunitas',   icon:Users },
+  { id:'broadcast',   label:'Broadcast',   icon:Megaphone },
+  { id:'channel',     label:'Channel',     icon:Newspaper },
+];
+function Sidebar({ active }) {
+  return (
+    <aside className="w-60 min-h-screen bg-white border-r border-gray-100 flex flex-col flex-shrink-0">
+      <div className="flex items-center gap-2.5 px-5 py-5 border-b border-gray-100">
+        <div className="w-9 h-9 bg-gradient-to-br from-brand-500 to-brand-700 rounded-lg flex items-center justify-center shadow-sm shadow-brand-600/20">
+          <Leaf className="text-white" size={18}/>
+        </div>
+        <div>
+          <div className="font-bold text-gray-900 text-[15px] leading-tight">Regrow</div>
+          <div className="text-[11px] text-gray-400 leading-tight">Operator Dashboard</div>
+        </div>
+      </div>
+      <nav className="flex-1 p-3 space-y-0.5">
+        {navItems.map(({ id, label, icon: I, badge }) => {
+          const isActive = id === active;
+          const HREFS = { dashboard:'Dashboard.html', marketplace:'Marketplace.html', communities:'Community.html', broadcast:'Broadcast.html', channel:'Channel.html', pickups:'#' };
+          return (
+            <a key={id} href={HREFS[id] || '#'} className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              isActive ? 'bg-brand-50 text-brand-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}>
+              <I size={16} className={isActive ? 'text-brand-700' : 'text-gray-400'}/>
+              <span className="flex-1">{label}</span>
+              {badge ? <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                isActive ? 'bg-brand-600 text-white' : 'bg-amber-100 text-amber-700'}`}>{badge}</span> : null}
+            </a>
+          );
+        })}
+      </nav>
+      <div className="p-3 border-t border-gray-100">
+        <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-brand-700 flex items-center justify-center text-white text-xs font-semibold">RA</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-semibold text-gray-800 truncate">Rina A.</div>
+            <div className="text-[10px] text-gray-400 truncate">Operator · Bandung</div>
+          </div>
+          <button className="text-gray-300 hover:text-gray-600 p-1"><LogOut size={14}/></button>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// ─── Toast ──────────────────────────────────────────────────────────────────
+
+function Toast({ toast }) {
+  if (!toast) return null;
+  const isError = toast.kind === 'error';
+  return (
+    <div className="toast fixed bottom-6 right-6 z-50">
+      <div className={`flex items-center gap-2.5 pl-3 pr-4 py-2.5 rounded-lg shadow-lg ${
+        isError ? 'bg-rose-50 border border-rose-200' : 'bg-gray-900 text-white'}`}>
+        {isError ? <XCircle size={16} className="text-rose-600"/> : <CheckCircle size={16} className="text-brand-400"/>}
+        <span className={`text-sm font-medium ${isError ? 'text-rose-700' : 'text-white'}`}>{toast.msg}</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Confirm dialog ─────────────────────────────────────────────────────────
+
+function ConfirmDialog({ open, title, body, onConfirm, onCancel, danger }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm" onClick={onCancel}>
+      <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-5" onClick={(e)=>e.stopPropagation()}>
+        <h3 className="text-base font-bold text-gray-900">{title}</h3>
+        <p className="text-sm text-gray-600 mt-1.5 leading-relaxed">{body}</p>
+        <div className="mt-5 flex gap-2">
+          <button onClick={onCancel} className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50">Batal</button>
+          <button onClick={onConfirm} className={`flex-1 px-3 py-2 rounded-lg text-white text-sm font-semibold ${
+            danger ? 'bg-rose-600 hover:bg-rose-700' : 'bg-brand-600 hover:bg-brand-700'}`}>
+            Konfirmasi
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Post Composer ──────────────────────────────────────────────────────────
+
+const COVER_PALETTE = ['#a7f3d0','#bfdbfe','#fbcfe8','#fde68a','#ddd6fe','#fecaca','#dcfce7'];
+
+function PostComposer({ open, onClose, onSubmit, editing }) {
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [category, setCategory] = useState('announcement');
+  const [cover, setCover] = useState(COVER_PALETTE[0]);
+  const [pinned, setPinned] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (editing) {
+      setTitle(editing.title); setBody(editing.body);
+      setCategory(editing.category); setCover(editing.cover); setPinned(editing.pinned);
+    } else if (open) {
+      setTitle(''); setBody(''); setCategory('announcement'); setCover(COVER_PALETTE[0]); setPinned(false);
+    }
+  }, [editing, open]);
+
+  if (!open) return null;
+  const canSave = title.trim().length > 3 && body.trim().length > 10 && !submitting;
+
+  const submit = async () => {
+    if (!canSave) return;
+    setSubmitting(true);
+    await new Promise(r => setTimeout(r, 600));
+    onSubmit({ title: title.trim(), body: body.trim(), category, cover, pinned });
+    setSubmitting(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]" onClick={(e)=>e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-bold text-gray-900">{editing ? 'Edit Post' : 'Post Baru'}</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Bagikan berita atau pengumuman ke channel publik Regrow</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1"><X size={18}/></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* Cover preview + picker */}
+          <div>
+            <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Cover</div>
+            <div className="rounded-xl overflow-hidden h-32 flex items-center justify-center text-gray-700/40 mb-2"
+                 style={{ backgroundColor: cover, backgroundImage:'repeating-linear-gradient(45deg, rgba(0,0,0,0.04) 0 2px, transparent 2px 8px)' }}>
+              <Image size={28}/>
+            </div>
+            <div className="flex gap-1.5 flex-wrap">
+              {COVER_PALETTE.map(c => (
+                <button key={c} onClick={()=>setCover(c)}
+                  className={`w-7 h-7 rounded-md transition ring-2 ${cover===c ? 'ring-gray-900 scale-110' : 'ring-transparent hover:ring-gray-300'}`}
+                  style={{backgroundColor:c}}/>
+              ))}
+            </div>
+          </div>
+
+          {/* Category */}
+          <div>
+            <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Kategori</div>
+            <div className="flex flex-wrap gap-1.5">
+              {CATEGORIES.map(c => (
+                <button key={c.id} onClick={()=>setCategory(c.id)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium ring-1 ring-inset transition ${
+                    category===c.id ? c.color : 'bg-white ring-gray-200 text-gray-500 hover:bg-gray-50'
+                  }`}>{c.label}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Title */}
+          <div>
+            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Judul</label>
+            <input value={title} onChange={(e)=>setTitle(e.target.value)} placeholder="Judul post yang menarik perhatian"
+              className="mt-1.5 w-full px-3 py-2.5 text-sm font-semibold bg-gray-50 border border-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white"/>
+            <div className="text-[10px] text-gray-400 mt-1">{title.length}/120 karakter</div>
+          </div>
+
+          {/* Body */}
+          <div>
+            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Isi Post</label>
+            <textarea value={body} onChange={(e)=>setBody(e.target.value)} rows={6}
+              placeholder="Tulis berita, pengumuman, atau tips di sini…"
+              className="mt-1.5 w-full px-3 py-2.5 text-sm bg-gray-50 border border-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white resize-none leading-relaxed"/>
+          </div>
+
+          {/* Pin toggle */}
+          <label className="flex items-center justify-between p-3 rounded-lg bg-amber-50/50 border border-amber-100 cursor-pointer">
+            <div className="flex items-center gap-2.5">
+              <Pin size={16} className="text-amber-700"/>
+              <div>
+                <div className="text-sm font-medium text-gray-900">Pin post di atas</div>
+                <div className="text-[11px] text-gray-500">Tampil di urutan paling atas channel</div>
+              </div>
+            </div>
+            <button type="button" onClick={()=>setPinned(!pinned)}
+              className={`relative w-10 h-5.5 rounded-full transition ${pinned ? 'bg-amber-600' : 'bg-gray-300'}`}
+              style={{height:'22px'}}>
+              <span className={`absolute top-0.5 w-[18px] h-[18px] bg-white rounded-full transition shadow-sm ${pinned ? 'left-[20px]' : 'left-0.5'}`}/>
+            </button>
+          </label>
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-gray-100 flex gap-2 bg-gray-50/40">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-sm font-medium text-gray-700">Batal</button>
+          <button onClick={submit} disabled={!canSave}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:bg-gray-200 disabled:text-gray-400 text-white text-sm font-semibold transition shadow-sm shadow-brand-600/20">
+            {submitting
+              ? <><RefreshCw size={14} className="spin"/> Menyimpan…</>
+              : <><Send size={14}/> {editing ? 'Simpan Perubahan' : 'Publikasikan'}</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Post Card ──────────────────────────────────────────────────────────────
+
+function PostCard({ post, onTogglePin, onDelete, onEdit, removing, index }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const cat = CATEGORIES.find(c => c.id === post.category) || CATEGORIES[0];
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = () => setMenuOpen(false);
+    setTimeout(() => window.addEventListener('click', close, { once: true }), 0);
+  }, [menuOpen]);
+
+  return (
+    <article className={`anim-in card overflow-hidden flex flex-col ${removing ? 'removing' : ''}`}
+             style={{animationDelay:`${index*30}ms`}}>
+      {/* Cover */}
+      <div className="relative h-32" style={{
+        backgroundColor: post.cover,
+        backgroundImage:'repeating-linear-gradient(45deg, rgba(0,0,0,0.03) 0 2px, transparent 2px 10px)',
+      }}>
+        {post.pinned && (
+          <div className="absolute top-3 left-3 inline-flex items-center gap-1 bg-amber-500 text-white text-[10px] font-bold px-2 py-1 rounded-md shadow-sm">
+            <Pin size={10}/> PINNED
+          </div>
+        )}
+        <div className="absolute top-3 right-3 flex items-center gap-1.5">
+          <span className={`badge ring-1 ring-inset ${cat.color} text-[10px] font-semibold`}>{cat.label}</span>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="p-4 flex-1 flex flex-col">
+        <h3 className="text-[15px] font-bold text-gray-900 leading-snug line-clamp-2">{post.title}</h3>
+        <p className="mt-1.5 text-sm text-gray-600 leading-relaxed line-clamp-3">{post.body}</p>
+
+        {/* Meta */}
+        <div className="mt-3 pt-3 border-t border-gray-50 flex items-center justify-between text-[11px] text-gray-400">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-emerald-100 to-brand-200 flex items-center justify-center text-[9px] font-bold text-brand-700 flex-shrink-0">
+              {initials(post.author)}
+            </div>
+            <span className="truncate text-gray-600 font-medium">{post.author}</span>
+            <span className="text-gray-300">·</span>
+            <span className="whitespace-nowrap">{relativeTime(post.published_at)}</span>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="inline-flex items-center gap-0.5"><Eye size={11}/> {post.views.toLocaleString('id-ID')}</span>
+            <span className="inline-flex items-center gap-0.5"><Heart size={11}/> {post.likes}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="px-4 py-2.5 border-t border-gray-50 bg-gray-50/30 flex items-center justify-between">
+        <button onClick={()=>onTogglePin(post)}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition ${
+            post.pinned
+              ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+          <Pin size={11}/> {post.pinned ? 'Unpin' : 'Pin'}
+        </button>
+
+        <div className="flex items-center gap-1">
+          <button onClick={()=>onEdit(post)} className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition" title="Edit">
+            <Edit size={14}/>
+          </button>
+          <button onClick={()=>onDelete(post)} className="p-1.5 rounded-md text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition" title="Hapus">
+            <Trash size={14}/>
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+// ─── Channel Page ───────────────────────────────────────────────────────────
+
+function ChannelPage() {
+  const [posts, setPosts] = useState(MOCK_POSTS);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [confirm, setConfirm] = useState(null);
+  const [removingIds, setRemovingIds] = useState(new Set());
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(()=>setToast(null), 2400);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const filtered = useMemo(() => {
+    return posts
+      .filter(p => categoryFilter === 'all' || p.category === categoryFilter)
+      .filter(p => !search ||
+        p.title.toLowerCase().includes(search.toLowerCase()) ||
+        p.body.toLowerCase().includes(search.toLowerCase())
+      )
+      .sort((a, b) => {
+        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+        return new Date(b.published_at) - new Date(a.published_at);
+      });
+  }, [posts, categoryFilter, search]);
+
+  const stats = useMemo(() => ({
+    total: posts.length,
+    pinned: posts.filter(p => p.pinned).length,
+    views: posts.reduce((s,p)=>s+p.views, 0),
+    likes: posts.reduce((s,p)=>s+p.likes, 0),
+  }), [posts]);
+
+  // Actions
+
+  const togglePin = (post) => {
+    // PATCH /api/channel/posts/{id} { pinned: !post.pinned }
+    setPosts(prev => prev.map(p => p.id === post.id ? { ...p, pinned: !p.pinned } : p));
+    setToast({ kind:'success', msg: post.pinned ? 'Post di-unpin' : 'Post berhasil di-pin' });
+  };
+
+  const requestDelete = (post) => {
+    setConfirm({
+      title: 'Hapus post?',
+      body: `"${post.title}" akan dihapus permanen dari channel. Aksi ini tidak bisa dibatalkan.`,
+      danger: true,
+      onConfirm: () => doDelete(post),
+    });
+  };
+
+  const doDelete = (post) => {
+    setConfirm(null);
+    setRemovingIds(prev => new Set(prev).add(post.id));
+    setTimeout(() => {
+      // DELETE /api/channel/posts/{id}
+      setPosts(prev => prev.filter(p => p.id !== post.id));
+      setRemovingIds(prev => { const n = new Set(prev); n.delete(post.id); return n; });
+      setToast({ kind:'success', msg:'Post berhasil dihapus' });
+    }, 250);
+  };
+
+  const submitPost = (data) => {
+    if (editing) {
+      setPosts(prev => prev.map(p => p.id === editing.id ? { ...p, ...data } : p));
+      setToast({ kind:'success', msg:'Post berhasil diperbarui' });
+      setEditing(null);
+    } else {
+      // POST /api/channel/posts
+      const newPost = {
+        id: 'p' + Date.now(),
+        ...data,
+        author: 'Rina A.',
+        published_at: new Date().toISOString(),
+        views: 0, likes: 0,
+      };
+      setPosts(prev => [newPost, ...prev]);
+      setToast({ kind:'success', msg:'Post berhasil dipublikasikan' });
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen">
+      <Sidebar active="channel"/>
+      <main className="flex-1 min-w-0">
+        {/* Top bar */}
+        <header className="h-16 px-8 bg-white/70 backdrop-blur border-b border-gray-100 flex items-center justify-between sticky top-0 z-20">
+          <div>
+            <div className="text-[11px] text-gray-400 font-medium uppercase tracking-wider">Rabu, 29 April 2026</div>
+            <h1 className="text-[15px] font-semibold text-gray-900 leading-tight">Channel</h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="relative hidden md:block">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+              <input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Cari post…"
+                className="w-72 pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white"/>
+            </div>
+            <button className="relative w-9 h-9 rounded-lg border border-gray-100 hover:bg-gray-50 flex items-center justify-center text-gray-500"><Bell size={16}/></button>
+          </div>
+        </header>
+
+        <div className="p-8 space-y-6">
+          {/* Title row */}
+          <div className="flex items-end justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Channel Berita</h2>
+              <p className="text-sm text-gray-500 mt-0.5">
+                {stats.total} post · {stats.pinned} di-pin · {stats.views.toLocaleString('id-ID')} total views
+              </p>
+            </div>
+            <button onClick={()=>{ setEditing(null); setComposerOpen(true); }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition shadow-sm shadow-brand-600/20">
+              <Plus size={14}/> Post Baru
+            </button>
+          </div>
+
+          {/* Filter */}
+          <div className="card p-3 flex items-center gap-3 flex-wrap">
+            <div className="flex gap-1 bg-gray-50 rounded-lg p-1">
+              <button onClick={()=>setCategoryFilter('all')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                  categoryFilter==='all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}>
+                Semua
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                  categoryFilter==='all' ? 'bg-brand-100 text-brand-700' : 'bg-gray-200/60 text-gray-500'}`}>{posts.length}</span>
+              </button>
+              {CATEGORIES.map(c => {
+                const count = posts.filter(p => p.category === c.id).length;
+                const active = categoryFilter === c.id;
+                return (
+                  <button key={c.id} onClick={()=>setCategoryFilter(c.id)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                      active ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}>
+                    {c.label}
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                      active ? 'bg-brand-100 text-brand-700' : 'bg-gray-200/60 text-gray-500'}`}>{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="ml-auto text-xs text-gray-400">
+              Menampilkan {filtered.length} post
+            </div>
+          </div>
+
+          {/* Grid */}
+          {filtered.length === 0 ? (
+            <div className="card p-16 text-center">
+              <div className="w-14 h-14 mx-auto rounded-full bg-gray-50 flex items-center justify-center mb-3">
+                <Newspaper size={22} className="text-gray-300"/>
+              </div>
+              <p className="text-sm text-gray-700 font-medium">Belum ada post</p>
+              <p className="text-xs text-gray-400 mt-1">Mulai bagikan berita atau pengumuman ke pengguna Regrow.</p>
+              <button onClick={()=>{ setEditing(null); setComposerOpen(true); }}
+                className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-900">
+                <Plus size={12}/> Buat post pertama
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filtered.map((p, i) => (
+                <PostCard key={p.id} post={p} index={i}
+                  removing={removingIds.has(p.id)}
+                  onTogglePin={togglePin}
+                  onDelete={requestDelete}
+                  onEdit={(post) => { setEditing(post); setComposerOpen(true); }}/>
+              ))}
+            </div>
+          )}
+        </div>
+      </main>
+
+      <PostComposer
+        open={composerOpen}
+        editing={editing}
+        onClose={()=>{ setComposerOpen(false); setEditing(null); }}
+        onSubmit={submitPost}/>
+
+      <ConfirmDialog
+        open={!!confirm}
+        title={confirm?.title}
+        body={confirm?.body}
+        danger={confirm?.danger}
+        onConfirm={confirm?.onConfirm}
+        onCancel={()=>setConfirm(null)}/>
+
+      <Toast toast={toast}/>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<ChannelPage/>);
+</script>
+</body>
+</html>

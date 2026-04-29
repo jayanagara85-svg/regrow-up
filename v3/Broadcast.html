@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Regrow — Broadcast</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: { sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui'], mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'] },
+      colors: { brand: { 50:'#f0fdf4',100:'#dcfce7',200:'#bbf7d0',500:'#22c55e',600:'#16a34a',700:'#15803d',900:'#14532d' } },
+    }}
+  }
+</script>
+<style>
+  body { font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui; }
+  .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 4px; }
+  .card { background:#fff; border-radius:.75rem; border:1px solid #f3f4f6; box-shadow:0 1px 2px 0 rgb(0 0 0 / 0.04); }
+  .badge { display:inline-flex; align-items:center; padding:.125rem .625rem; border-radius:9999px; font-size:.75rem; font-weight:500; }
+  @keyframes slideUp { from { transform: translateY(8px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+  .toast { animation: slideUp 0.2s ease-out; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin 0.7s linear infinite; }
+  @keyframes fadeIn { from { opacity:0; transform: translateY(4px); } to { opacity:1; } }
+  .anim-in { animation: fadeIn 0.25s ease-out backwards; }
+</style>
+</head>
+<body class="bg-gray-50 text-gray-900 antialiased">
+
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" data-presets="env,react">
+const { useState, useEffect, useMemo, useRef } = React;
+
+const NOW = new Date('2026-04-29T14:30:00');
+const minutesAgo = (m) => new Date(NOW.getTime() - m * 60_000).toISOString();
+const hoursAgo   = (h) => new Date(NOW.getTime() - h * 3600_000).toISOString();
+const daysAgo    = (d) => new Date(NOW.getTime() - d * 86_400_000).toISOString();
+
+// ─── Mock data ──────────────────────────────────────────────────────────────
+
+const MOCK_COMMUNITIES = [
+  { id:'c1', name:'Bandung Utara Hijau',         location:'Bandung Utara',   member_count:128, weekly_kg:284, color:'from-emerald-400 to-brand-700', icon:'🌱' },
+  { id:'c2', name:'Cihampelas Re-Wear',          location:'Bandung Tengah',  member_count:74,  weekly_kg:142, color:'from-blue-400 to-indigo-600',   icon:'👕' },
+  { id:'c3', name:'Sekolah Hijau Cimahi',        location:'Cimahi',          member_count:42,  weekly_kg:96,  color:'from-amber-400 to-orange-600',  icon:'🎒' },
+  { id:'c4', name:'Komunitas Penjahit Buahbatu', location:'Bandung Selatan', member_count:36,  weekly_kg:64,  color:'from-rose-400 to-pink-600',     icon:'🧵' },
+];
+
+const MOCK_HISTORY = [
+  { id:'b1', community_id:'c1', text:'Pengingat: pickup minggu ini hari Sabtu pukul 08.00 di titik kumpul biasa 🌱',                          sent_at:daysAgo(2),  delivered:128, read:112 },
+  { id:'b2', community_id:'c1', text:'Terima kasih semua! Minggu lalu kita berhasil mengumpulkan 184 kg pakaian bekas. Mari pertahankan!',     sent_at:daysAgo(5),  delivered:125, read:118 },
+  { id:'b3', community_id:'c2', text:'Halo Cihampelas Re-Wear! Pickup hari Jumat dimajukan ke pukul 14.00 ya, mohon konfirmasi kesiapan.',     sent_at:daysAgo(1),  delivered:74,  read:62  },
+  { id:'b4', community_id:'c3', text:'Selamat liburan sekolah! Setoran seragam bekas akhir semester bisa dikirim mulai 15 Mei.',               sent_at:daysAgo(7),  delivered:42,  read:38  },
+  { id:'b5', community_id:'c1', text:'Workshop upcycling tas Sabtu depan masih ada 8 slot. Daftar via balas pesan ini.',                       sent_at:daysAgo(9),  delivered:128, read:104 },
+  { id:'b6', community_id:'c4', text:'Tarif kain perca per kg disesuaikan menjadi Rp 4.500 mulai pickup berikutnya.',                          sent_at:daysAgo(3),  delivered:36,  read:32  },
+];
+
+// ─── Icons ──────────────────────────────────────────────────────────────────
+
+const Icon = ({ size=16, className='', strokeWidth=2, children }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24"
+       fill="none" stroke="currentColor" strokeWidth={strokeWidth}
+       strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>
+);
+const Leaf       = (p)=><Icon {...p}><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19.2 2.96c.4 2.91.5 5.5 0 8.04C18.27 17.96 14.84 21.45 11 20Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/></Icon>;
+const Package    = (p)=><Icon {...p}><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></Icon>;
+const LayoutGrid = (p)=><Icon {...p}><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></Icon>;
+const Store      = (p)=><Icon {...p}><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/></Icon>;
+const Users      = (p)=><Icon {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></Icon>;
+const Newspaper  = (p)=><Icon {...p}><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></Icon>;
+const Megaphone  = (p)=><Icon {...p}><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></Icon>;
+const LogOut     = (p)=><Icon {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></Icon>;
+const Bell       = (p)=><Icon {...p}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></Icon>;
+const Send       = (p)=><Icon {...p}><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></Icon>;
+const Whatsapp   = (p)=><Icon {...p}><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></Icon>;
+const CheckCircle= (p)=><Icon {...p}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></Icon>;
+const XCircle    = (p)=><Icon {...p}><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></Icon>;
+const Clock      = (p)=><Icon {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></Icon>;
+const Eye        = (p)=><Icon {...p}><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></Icon>;
+const ChevronDown= (p)=><Icon {...p}><path d="m6 9 6 6 6-6"/></Icon>;
+const ArrowLeft  = (p)=><Icon {...p}><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></Icon>;
+const Trash      = (p)=><Icon {...p}><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></Icon>;
+const RefreshCw  = (p)=><Icon {...p}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></Icon>;
+const Filter     = (p)=><Icon {...p}><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></Icon>;
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function relativeTime(iso) {
+  const diff = (NOW - new Date(iso)) / 1000;
+  if (diff < 60)     return `baru saja`;
+  if (diff < 3600)   return `${Math.floor(diff/60)} mnt lalu`;
+  if (diff < 86_400) return `${Math.floor(diff/3600)} jam lalu`;
+  return `${Math.floor(diff/86_400)} hari lalu`;
+}
+
+// ─── Sidebar ────────────────────────────────────────────────────────────────
+
+const navItems = [
+  { id:'dashboard',   label:'Dashboard',   icon:LayoutGrid },
+  { id:'pickups',     label:'Pickups',     icon:Package, badge:2 },
+  { id:'marketplace', label:'Marketplace', icon:Store },
+  { id:'communities', label:'Komunitas',   icon:Users },
+  { id:'broadcast',   label:'Broadcast',   icon:Megaphone },
+  { id:'channel',     label:'Channel',     icon:Newspaper },
+];
+function Sidebar({ active }) {
+  return (
+    <aside className="w-60 min-h-screen bg-white border-r border-gray-100 flex flex-col flex-shrink-0">
+      <div className="flex items-center gap-2.5 px-5 py-5 border-b border-gray-100">
+        <div className="w-9 h-9 bg-gradient-to-br from-brand-500 to-brand-700 rounded-lg flex items-center justify-center shadow-sm shadow-brand-600/20">
+          <Leaf className="text-white" size={18} />
+        </div>
+        <div>
+          <div className="font-bold text-gray-900 text-[15px] leading-tight">Regrow</div>
+          <div className="text-[11px] text-gray-400 leading-tight">Operator Dashboard</div>
+        </div>
+      </div>
+      <nav className="flex-1 p-3 space-y-0.5">
+        {navItems.map(({ id, label, icon: I, badge }) => {
+          const isActive = id === active;
+          const HREFS = { dashboard:'Dashboard.html', marketplace:'Marketplace.html', communities:'Community.html', broadcast:'Broadcast.html', channel:'Channel.html', pickups:'#' };
+          return (
+            <a key={id} href={HREFS[id] || '#'} className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              isActive ? 'bg-brand-50 text-brand-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}>
+              <I size={16} className={isActive ? 'text-brand-700' : 'text-gray-400'} />
+              <span className="flex-1">{label}</span>
+              {badge ? <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                isActive ? 'bg-brand-600 text-white' : 'bg-amber-100 text-amber-700'}`}>{badge}</span> : null}
+            </a>
+          );
+        })}
+      </nav>
+      <div className="p-3 border-t border-gray-100">
+        <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-brand-700 flex items-center justify-center text-white text-xs font-semibold">RA</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-semibold text-gray-800 truncate">Rina A.</div>
+            <div className="text-[10px] text-gray-400 truncate">Operator · Bandung</div>
+          </div>
+          <button className="text-gray-300 hover:text-gray-600 p-1"><LogOut size={14}/></button>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// ─── Toast ──────────────────────────────────────────────────────────────────
+
+function Toast({ toast }) {
+  if (!toast) return null;
+  const isError = toast.kind === 'error';
+  return (
+    <div className="toast fixed bottom-6 right-6 z-50">
+      <div className={`flex items-center gap-2.5 pl-3 pr-4 py-2.5 rounded-lg shadow-lg ${
+        isError ? 'bg-rose-50 border border-rose-200' : 'bg-gray-900 text-white'}`}>
+        {isError ? <XCircle size={16} className="text-rose-600"/> : <CheckCircle size={16} className="text-brand-400"/>}
+        <span className={`text-sm font-medium ${isError ? 'text-rose-700' : 'text-white'}`}>{toast.msg}</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Community picker ──────────────────────────────────────────────────────
+
+function CommunityPicker({ communities, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const selected = communities.find(c => c.id === value);
+
+  useEffect(() => {
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={()=>setOpen(o=>!o)}
+        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-gray-200 hover:border-gray-300 bg-white text-left transition">
+        <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${selected.color} flex items-center justify-center text-lg flex-shrink-0`}>
+          {selected.icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-gray-900 truncate">{selected.name}</div>
+          <div className="text-[11px] text-gray-500">{selected.member_count} anggota · {selected.location}</div>
+        </div>
+        <ChevronDown size={14} className={`text-gray-400 transition-transform ${open?'rotate-180':''}`}/>
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-lg shadow-lg z-30 overflow-hidden">
+          {communities.map(c => (
+            <button key={c.id} onClick={()=>{ onChange(c.id); setOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition ${
+                c.id===value ? 'bg-brand-50/40' : ''}`}>
+              <div className={`w-8 h-8 rounded-md bg-gradient-to-br ${c.color} flex items-center justify-center text-base flex-shrink-0`}>
+                {c.icon}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-gray-900 truncate">{c.name}</div>
+                <div className="text-[11px] text-gray-400">{c.member_count} anggota</div>
+              </div>
+              {c.id===value && <CheckCircle size={14} className="text-brand-600"/>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Composer ───────────────────────────────────────────────────────────────
+
+const TEMPLATES = [
+  { id:'reminder', label:'Pengingat pickup',     text:'Halo {nama}! Pickup minggu ini hari Sabtu pukul 08.00. Pastikan sampah tekstil sudah dipisah dari sampah lain ya 🌱' },
+  { id:'thanks',   label:'Ucapan terima kasih',  text:'Terima kasih sudah ikut setor minggu lalu. Total komunitas kita berhasil mengumpulkan {kg} kg!' },
+  { id:'event',    label:'Acara komunitas',      text:'Yuk gabung di acara komunitas Sabtu depan! Ada workshop upcycling gratis untuk 30 orang pertama.' },
+  { id:'price',    label:'Pengumuman tarif',     text:'Pemberitahuan: tarif pickup bulan ini disesuaikan. Detail bisa dilihat di Channel atau hubungi operator.' },
+  { id:'rain',     label:'Pickup hujan',         text:'Halo, karena cuaca hujan deras, pickup hari ini dipindah ke besok pukul 09.00. Mohon maklum 🙏' },
+];
+
+function Composer({ community, onSend }) {
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleAt, setScheduleAt] = useState('');
+  const taRef = useRef(null);
+
+  const charLimit = 600;
+  const remaining = charLimit - text.length;
+  const canSend = text.trim().length > 0 && text.length <= charLimit && !sending && (!scheduleEnabled || scheduleAt);
+
+  // Replace variables for preview
+  const preview = useMemo(() => {
+    return text
+      .replace(/\{nama\}/g, 'Siti')
+      .replace(/\{kg\}/g, String(community.weekly_kg));
+  }, [text, community]);
+
+  const applyTemplate = (t) => {
+    setText(t.text);
+    requestAnimationFrame(() => taRef.current?.focus());
+  };
+
+  const submit = async () => {
+    if (!canSend) return;
+    setSending(true);
+    // POST /api/communities/{id}/broadcast
+    await new Promise(r => setTimeout(r, 900));
+    setSending(false);
+    onSend(community, text, scheduleEnabled ? scheduleAt : null);
+    setText('');
+    setScheduleEnabled(false);
+    setScheduleAt('');
+  };
+
+  return (
+    <div className="card p-6">
+      <div className="flex items-start justify-between mb-5">
+        <div>
+          <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+            <Megaphone size={16} className="text-brand-700"/> Tulis Broadcast
+          </h3>
+          <p className="text-xs text-gray-500 mt-1">
+            Akan terkirim ke <span className="font-semibold text-gray-700">{community.member_count} anggota</span> {community.name} via WhatsApp
+          </p>
+        </div>
+        <span className="badge bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200/60">
+          <Whatsapp size={11} className="mr-1"/> WhatsApp
+        </span>
+      </div>
+
+      {/* Templates */}
+      <div className="mb-3">
+        <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider mb-2">Template cepat</div>
+        <div className="flex flex-wrap gap-1.5">
+          {TEMPLATES.map(t => (
+            <button key={t.id} onClick={()=>applyTemplate(t)}
+              className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-gray-50 hover:bg-brand-50 hover:text-brand-700 text-gray-600 border border-gray-100 transition">
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Textarea */}
+      <div className="relative">
+        <textarea
+          ref={taRef}
+          value={text}
+          onChange={(e)=>setText(e.target.value)}
+          placeholder={`Tulis pesan untuk ${community.name}…`}
+          rows={7}
+          className="w-full px-3.5 py-3 text-sm bg-gray-50 border border-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white resize-none placeholder-gray-400 leading-relaxed"
+        />
+        <div className={`absolute bottom-2.5 right-3 text-[10px] font-medium ${
+          remaining < 0 ? 'text-rose-600' : remaining < 50 ? 'text-amber-600' : 'text-gray-400'
+        }`}>
+          {remaining}
+        </div>
+      </div>
+
+      {/* Variable hint */}
+      <div className="mt-2 text-[11px] text-gray-400">
+        Variabel: <code className="font-mono text-gray-500 bg-gray-50 px-1 rounded">{'{nama}'}</code> diganti nama anggota, <code className="font-mono text-gray-500 bg-gray-50 px-1 rounded">{'{kg}'}</code> diganti tonase mingguan ({community.weekly_kg} kg).
+      </div>
+
+      {/* Schedule */}
+      <div className="mt-4 p-3 rounded-lg bg-gray-50/60 border border-gray-100">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={scheduleEnabled} onChange={(e)=>setScheduleEnabled(e.target.checked)}
+            className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500"/>
+          <span className="text-xs font-medium text-gray-700">Jadwalkan pengiriman</span>
+        </label>
+        {scheduleEnabled && (
+          <div className="mt-2 anim-in">
+            <input type="datetime-local" value={scheduleAt} onChange={(e)=>setScheduleAt(e.target.value)}
+              className="w-full px-3 py-2 text-xs bg-white border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500"/>
+          </div>
+        )}
+      </div>
+
+      {/* Send */}
+      <div className="mt-5 flex items-center gap-2">
+        <button onClick={submit} disabled={!canSend}
+          className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-3 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:bg-gray-200 disabled:text-gray-400 text-white text-sm font-semibold transition shadow-sm shadow-brand-600/20">
+          {sending ? <><RefreshCw size={14} className="spin"/> Mengirim ke {community.member_count} anggota…</>
+                   : scheduleEnabled
+                     ? <><Clock size={14}/> Jadwalkan Broadcast</>
+                     : <><Send size={14}/> Kirim Sekarang</>}
+        </button>
+        <button onClick={()=>setText('')} disabled={!text}
+          className="px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 text-sm font-medium text-gray-600">
+          Hapus
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Preview pane (WhatsApp-style) ──────────────────────────────────────────
+
+function Preview({ community, text }) {
+  const preview = text
+    ? text.replace(/\{nama\}/g, 'Siti').replace(/\{kg\}/g, String(community.weekly_kg))
+    : null;
+
+  return (
+    <div className="card p-5">
+      <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-1.5">
+        <Eye size={14} className="text-gray-400"/> Pratinjau (untuk Siti)
+      </h3>
+      <div className="rounded-xl p-4" style={{background:'#dcf8c6', backgroundImage:'radial-gradient(circle at 20% 20%, rgba(255,255,255,.4) 0, transparent 60%)'}}>
+        <div className="bg-white rounded-lg shadow-sm p-3 max-w-[260px]">
+          <div className="text-[10px] font-semibold text-brand-700 mb-1">Regrow Bandung</div>
+          {preview ? (
+            <p className="text-[13px] text-gray-800 whitespace-pre-wrap leading-relaxed">{preview}</p>
+          ) : (
+            <p className="text-[13px] text-gray-300 italic">Pesan akan muncul di sini…</p>
+          )}
+          <div className="text-[9px] text-gray-400 text-right mt-1">14:32 ✓✓</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── History ────────────────────────────────────────────────────────────────
+
+function HistoryItem({ entry, community, onDelete }) {
+  const [expanded, setExpanded] = useState(false);
+  const truncated = entry.text.length > 110;
+  const readPct = Math.round((entry.read / entry.delivered) * 100);
+
+  return (
+    <div className="anim-in p-4 rounded-lg border border-gray-100 bg-white hover:border-gray-200 transition">
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className={`w-7 h-7 rounded-md bg-gradient-to-br ${community.color} flex items-center justify-center text-sm flex-shrink-0`}>
+            {community.icon}
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs font-semibold text-gray-900 truncate">{community.name}</div>
+            <div className="text-[10px] text-gray-400">{relativeTime(entry.sent_at)}</div>
+          </div>
+        </div>
+        <button onClick={()=>onDelete(entry.id)} className="text-gray-300 hover:text-rose-500 p-1 transition">
+          <Trash size={13}/>
+        </button>
+      </div>
+      <p className={`text-xs text-gray-700 leading-relaxed ${expanded ? '' : 'line-clamp-2'}`}>{entry.text}</p>
+      {truncated && (
+        <button onClick={()=>setExpanded(e=>!e)} className="text-[11px] font-medium text-brand-700 hover:underline mt-1">
+          {expanded ? 'Sembunyikan' : 'Lihat selengkapnya'}
+        </button>
+      )}
+      <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-50">
+        <div className="flex items-center gap-1 text-[11px]">
+          <CheckCircle size={11} className="text-brand-600"/>
+          <span className="text-gray-500">Terkirim</span>
+          <span className="font-semibold text-gray-800">{entry.delivered}</span>
+        </div>
+        <div className="flex items-center gap-1 text-[11px]">
+          <Eye size={11} className="text-blue-500"/>
+          <span className="text-gray-500">Dibaca</span>
+          <span className="font-semibold text-gray-800">{entry.read}</span>
+          <span className="text-gray-400">({readPct}%)</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Page ───────────────────────────────────────────────────────────────────
+
+function BroadcastPage() {
+  // Read ?id= from URL
+  const initialId = useMemo(() => {
+    const p = new URLSearchParams(window.location.search);
+    const id = p.get('id');
+    return MOCK_COMMUNITIES.find(c => c.id === id)?.id || MOCK_COMMUNITIES[0].id;
+  }, []);
+
+  const [selectedId, setSelectedId] = useState(initialId);
+  const [history, setHistory] = useState(MOCK_HISTORY);
+  const [filterId, setFilterId] = useState('all');
+  const [text, setText] = useState('');
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(()=>setToast(null), 2400);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const selected = MOCK_COMMUNITIES.find(c => c.id === selectedId);
+
+  const filteredHistory = history
+    .filter(h => filterId === 'all' || h.community_id === filterId)
+    .sort((a,b) => new Date(b.sent_at) - new Date(a.sent_at));
+
+  const onSend = (community, msg, scheduleAt) => {
+    const entry = {
+      id: 'b' + Date.now(),
+      community_id: community.id,
+      text: msg,
+      sent_at: new Date().toISOString(),
+      delivered: community.member_count,
+      read: 0,
+    };
+    setHistory(h => [entry, ...h]);
+    setToast({ kind:'success', msg: scheduleAt
+      ? `Broadcast dijadwalkan untuk ${new Date(scheduleAt).toLocaleString('id-ID')}`
+      : `Broadcast terkirim ke ${community.member_count} anggota` });
+  };
+
+  const onDelete = (id) => {
+    setHistory(h => h.filter(x => x.id !== id));
+    setToast({ kind:'success', msg:'Broadcast dihapus dari riwayat' });
+  };
+
+  // Total stats
+  const totalDelivered = history.reduce((s,h)=>s+h.delivered, 0);
+  const totalRead = history.reduce((s,h)=>s+h.read, 0);
+  const totalReadPct = totalDelivered ? Math.round((totalRead/totalDelivered)*100) : 0;
+
+  return (
+    <div className="flex min-h-screen">
+      <Sidebar active="broadcast"/>
+      <main className="flex-1 min-w-0">
+        {/* Top bar */}
+        <header className="h-16 px-8 bg-white/70 backdrop-blur border-b border-gray-100 flex items-center justify-between sticky top-0 z-20">
+          <div>
+            <div className="text-[11px] text-gray-400 font-medium uppercase tracking-wider">Rabu, 29 April 2026</div>
+            <h1 className="text-[15px] font-semibold text-gray-900 leading-tight">Broadcast</h1>
+          </div>
+          <button className="relative w-9 h-9 rounded-lg border border-gray-100 hover:bg-gray-50 flex items-center justify-center text-gray-500"><Bell size={16}/></button>
+        </header>
+
+        <div className="p-8 space-y-6">
+          {/* Header */}
+          <div className="flex items-end justify-between gap-4 flex-wrap">
+            <div>
+              <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
+                <a href="Community.html" className="hover:text-brand-700 inline-flex items-center gap-1">
+                  <ArrowLeft size={12}/> Komunitas
+                </a>
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Broadcast Pesan</h2>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Kirim pesan WhatsApp massal ke anggota komunitas
+              </p>
+            </div>
+
+            {/* Quick stats */}
+            <div className="flex items-center gap-6 px-5 py-3 card">
+              <div>
+                <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Bulan Ini</div>
+                <div className="text-lg font-bold text-gray-900">{history.length}<span className="text-xs text-gray-400 font-normal ml-1">broadcast</span></div>
+              </div>
+              <div className="w-px h-9 bg-gray-100"></div>
+              <div>
+                <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Pesan Terkirim</div>
+                <div className="text-lg font-bold text-gray-900">{totalDelivered}</div>
+              </div>
+              <div className="w-px h-9 bg-gray-100"></div>
+              <div>
+                <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Dibaca Rata-rata</div>
+                <div className="text-lg font-bold text-brand-700">{totalReadPct}%</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Main grid: composer (left) + preview (right) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <div className="lg:col-span-7 space-y-4">
+              {/* Community picker */}
+              <div className="card p-4">
+                <label className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider block mb-2">Kirim ke komunitas</label>
+                <CommunityPicker communities={MOCK_COMMUNITIES} value={selectedId} onChange={setSelectedId}/>
+              </div>
+
+              {/* Composer */}
+              <Composer key={selectedId} community={selected} onSend={(c,t,s)=>{ onSend(c,t,s); setText(''); }}/>
+            </div>
+
+            {/* Preview */}
+            <div className="lg:col-span-5 space-y-4">
+              <Preview community={selected} text={text}/>
+              <ComposerPreviewBridge onText={setText}/>
+
+              {/* Tips card */}
+              <div className="card p-5 bg-gradient-to-br from-brand-50/50 to-emerald-50/30 border-brand-200/40">
+                <h3 className="text-xs font-semibold text-brand-900 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  💡 Tips Broadcast Efektif
+                </h3>
+                <ul className="text-xs text-gray-700 space-y-1.5 leading-relaxed">
+                  <li className="flex gap-2"><span className="text-brand-600 font-bold">·</span> Gunakan <code className="font-mono bg-white px-1 rounded text-[10px]">{'{nama}'}</code> untuk personalisasi</li>
+                  <li className="flex gap-2"><span className="text-brand-600 font-bold">·</span> Pesan optimal di bawah 200 karakter</li>
+                  <li className="flex gap-2"><span className="text-brand-600 font-bold">·</span> Kirim antara pukul 09.00–11.00 untuk tingkat baca tertinggi</li>
+                  <li className="flex gap-2"><span className="text-brand-600 font-bold">·</span> Hindari kirim lebih dari 2× per minggu</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* History */}
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                  <Clock size={16} className="text-gray-400"/> Riwayat Broadcast
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">{filteredHistory.length} broadcast {filterId !== 'all' ? `untuk ${MOCK_COMMUNITIES.find(c=>c.id===filterId)?.name}` : 'di semua komunitas'}</p>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button onClick={()=>setFilterId('all')}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                    filterId==='all' ? 'bg-brand-600 text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
+                  Semua ({history.length})
+                </button>
+                {MOCK_COMMUNITIES.map(c => {
+                  const count = history.filter(h => h.community_id === c.id).length;
+                  return (
+                    <button key={c.id} onClick={()=>setFilterId(c.id)}
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition inline-flex items-center gap-1.5 ${
+                        filterId===c.id ? 'bg-brand-600 text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
+                      <span>{c.icon}</span> {c.name.split(' ')[0]} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {filteredHistory.length === 0 ? (
+              <div className="text-center py-12 text-sm text-gray-400">
+                Belum ada broadcast{filterId !== 'all' ? ' untuk komunitas ini' : ''}.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {filteredHistory.map((entry, i) => {
+                  const community = MOCK_COMMUNITIES.find(c => c.id === entry.community_id);
+                  return <HistoryItem key={entry.id} entry={entry} community={community} onDelete={onDelete}/>;
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+
+      <Toast toast={toast}/>
+    </div>
+  );
+}
+
+// Bridge so the Preview gets live text from the composer textarea via DOM event.
+// (Simpler than lifting state across the layout — listens to textarea changes.)
+function ComposerPreviewBridge({ onText }) {
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.target.tagName === 'TEXTAREA') onText(e.target.value);
+    };
+    document.addEventListener('input', handler);
+    return () => document.removeEventListener('input', handler);
+  }, [onText]);
+  return null;
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<BroadcastPage/>);
+</script>
+</body>
+</html>

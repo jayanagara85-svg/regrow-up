@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Regrow — Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui'],
+          mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+        },
+        colors: {
+          brand: {
+            50:  '#f0fdf4',
+            100: '#dcfce7',
+            200: '#bbf7d0',
+            500: '#22c55e',
+            600: '#16a34a',
+            700: '#15803d',
+            900: '#14532d',
+          },
+        },
+      },
+    },
+  }
+</script>
+<style>
+  body { font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui; }
+  .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  /* Custom scrollbar in spirit of clean dashboard */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #d1d5db; }
+  .card {
+    background: #fff;
+    border-radius: 0.75rem;
+    border: 1px solid #f3f4f6;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.625rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+  /* Toast slide-in */
+  @keyframes slideUp {
+    from { transform: translateY(8px); opacity: 0; }
+    to   { transform: translateY(0);   opacity: 1; }
+  }
+  .toast { animation: slideUp 0.2s ease-out; }
+  /* Spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin 0.7s linear infinite; }
+  /* Sparkline subtle pulse on hover */
+  .sparkline-bar { transition: opacity 0.15s; }
+  .stat-card:hover .sparkline-bar { opacity: 0.85; }
+</style>
+</head>
+<body class="bg-gray-50 text-gray-900 antialiased">
+
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" data-presets="env,react">
+const { useState, useEffect, useMemo } = React;
+
+// ─── Mock data (mirroring backend models) ───────────────────────────────────
+// In production this is fetched from /api/pickups, /api/marketplace/listings, etc.
+
+const NOW = new Date('2026-04-29T14:30:00');
+const minutesAgo = (m) => new Date(NOW.getTime() - m * 60_000).toISOString();
+const hoursAgo   = (h) => new Date(NOW.getTime() - h * 60 * 60_000).toISOString();
+const daysAgo    = (d) => new Date(NOW.getTime() - d * 24 * 60 * 60_000).toISOString();
+
+const MOCK_PICKUPS = [
+  { id: 'a3f9c1d2-0001-4e2b-9c5d-1a2b3c4d5e6f', user: 'Siti Rahayu',     location: 'Jl. Cihampelas No. 12, Bandung',         waste_type: 'Pakaian Bekas',  status: 'pending',   created_at: minutesAgo(8),  estimated_weight: 5.5 },
+  { id: 'b7e4a982-0002-4abc-bbcd-2b3c4d5e6f70', user: 'Budi Santoso',    location: 'Perum Buah Batu Blok C No. 14, Bandung', waste_type: 'Kain Perca',     status: 'grading',   created_at: minutesAgo(23), estimated_weight: 12   },
+  { id: 'c1d2e3f4-0003-4def-a890-3c4d5e6f7081', user: 'Dewi Lestari',    location: 'Jl. Setiabudi No. 88, Bandung',          waste_type: 'Seragam Sekolah',status: 'graded',    created_at: minutesAgo(42), estimated_weight: 8.2  },
+  { id: 'd5e6f708-0004-4123-9abc-4d5e6f708192', user: 'Ahmad Hidayat',   location: 'Jl. Dipatiukur No. 35, Bandung',         waste_type: 'Pakaian Bekas',  status: 'confirmed', created_at: hoursAgo(2),    estimated_weight: 3.1  },
+  { id: 'e6f70819-0005-4456-bcde-5e6f70819203', user: 'Maya Anggraini',  location: 'Jl. Sukajadi No. 201, Bandung',          waste_type: 'Sprei & Handuk', status: 'completed', created_at: hoursAgo(4),    estimated_weight: 7.8  },
+  { id: 'f7081920-0006-4789-cdef-6f7081920314', user: 'Rizki Pratama',   location: 'Jl. Riau No. 6, Bandung',                waste_type: 'Kain Perca',     status: 'pending',   created_at: hoursAgo(5),    estimated_weight: 4.0  },
+  { id: 'g8192031-0007-4abc-def0-708192031425', user: 'Indah Permata',   location: 'Jl. Pasteur No. 102, Bandung',           waste_type: 'Pakaian Bekas',  status: 'completed', created_at: hoursAgo(7),    estimated_weight: 6.4  },
+];
+
+const MOCK_GRADES = {
+  'c1d2e3f4-0003-4def-a890-3c4d5e6f7081': { grade: 'A', confidence: 0.92, estimated_kg: 8.2, reasoning: 'Kondisi pakaian baik, sebagian besar dapat dijual kembali tanpa proses tambahan.' },
+};
+
+// ─── Icons (lucide-style inline SVG) ────────────────────────────────────────
+
+const Icon = ({ d, size = 16, className = '', strokeWidth = 2, children }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size}
+       viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"
+       className={className}>
+    {d ? <path d={d} /> : children}
+  </svg>
+);
+
+const Leaf       = (p) => <Icon {...p}><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19.2 2.96c.4 2.91.5 5.5 0 8.04C18.27 17.96 14.84 21.45 11 20Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/></Icon>;
+const Package    = (p) => <Icon {...p}><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></Icon>;
+const LayoutGrid = (p) => <Icon {...p}><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></Icon>;
+const Store      = (p) => <Icon {...p}><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/><path d="M22 7v3a2 2 0 0 1-2 2 2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 16 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 12 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 8 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 4 12a2 2 0 0 1-2-2V7"/></Icon>;
+const Users      = (p) => <Icon {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></Icon>;
+const Megaphone  = (p) => <Icon {...p}><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></Icon>;
+const Newspaper  = (p) => <Icon {...p}><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></Icon>;
+const LogOut     = (p) => <Icon {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></Icon>;
+const Bell       = (p) => <Icon {...p}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></Icon>;
+const Search     = (p) => <Icon {...p}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></Icon>;
+const ChevronRt  = (p) => <Icon {...p}><path d="m9 18 6-6-6-6"/></Icon>;
+const RefreshCw  = (p) => <Icon {...p}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></Icon>;
+const CheckCircle= (p) => <Icon {...p}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></Icon>;
+const XCircle    = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></Icon>;
+const Eye        = (p) => <Icon {...p}><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></Icon>;
+const Recycle    = (p) => <Icon {...p}><path d="M7 19H4.815a1.83 1.83 0 0 1-1.57-.881 1.785 1.785 0 0 1-.004-1.784L7.196 9.5"/><path d="M11 19h8.203a1.83 1.83 0 0 0 1.556-.89 1.784 1.784 0 0 0 0-1.775l-1.226-2.12"/><path d="m14 16-3 3 3 3"/><path d="M8.293 13.596 7.196 9.5 3.1 10.598"/><path d="m9.344 5.811 1.093-1.892A1.83 1.83 0 0 1 11.985 3a1.784 1.784 0 0 1 1.546.888l3.943 6.843"/><path d="m13.378 9.633 4.096 1.098 1.097-4.096"/></Icon>;
+const TrendingUp = (p) => <Icon {...p}><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></Icon>;
+const Clock      = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></Icon>;
+const Scale      = (p) => <Icon {...p}><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></Icon>;
+const MapPin     = (p) => <Icon {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></Icon>;
+const Plus       = (p) => <Icon {...p}><path d="M5 12h14"/><path d="M12 5v14"/></Icon>;
+const ArrowUpRt  = (p) => <Icon {...p}><path d="M7 7h10v10"/><path d="M7 17 17 7"/></Icon>;
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+const STATUS_LABELS = {
+  pending: 'Menunggu',
+  confirmed: 'Dikonfirmasi',
+  grading: 'Sedang Dinilai',
+  graded: 'Selesai Dinilai',
+  completed: 'Selesai',
+  cancelled: 'Dibatalkan',
+};
+
+const STATUS_CLASSES = {
+  pending:   'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200/60',
+  confirmed: 'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200/60',
+  grading:   'bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200/60',
+  graded:    'bg-teal-50 text-teal-700 ring-1 ring-inset ring-teal-200/60',
+  completed: 'bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-200/60',
+  cancelled: 'bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200/60',
+};
+
+const STATUS_DOT = {
+  pending: 'bg-amber-500',
+  confirmed: 'bg-blue-500',
+  grading: 'bg-violet-500',
+  graded: 'bg-teal-500',
+  completed: 'bg-brand-600',
+  cancelled: 'bg-rose-500',
+};
+
+function formatRelative(iso) {
+  const now = NOW;
+  const d = new Date(iso);
+  const diff = (now - d) / 1000;
+  if (diff < 60)        return `${Math.floor(diff)} detik lalu`;
+  if (diff < 3600)      return `${Math.floor(diff / 60)} menit lalu`;
+  if (diff < 86_400)    return `${Math.floor(diff / 3600)} jam lalu`;
+  return `${Math.floor(diff / 86_400)} hari lalu`;
+}
+
+function formatTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+}
+
+const StatusBadge = ({ status }) => (
+  <span className={`badge ${STATUS_CLASSES[status] || 'bg-gray-100 text-gray-700'}`}>
+    <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${STATUS_DOT[status] || 'bg-gray-400'}`}></span>
+    {STATUS_LABELS[status] || status}
+  </span>
+);
+
+// ─── Sidebar ────────────────────────────────────────────────────────────────
+
+const navItems = [
+  { id: 'dashboard',   label: 'Dashboard',  icon: LayoutGrid },
+  { id: 'pickups',     label: 'Pickups',    icon: Package, badge: 2 },
+  { id: 'marketplace', label: 'Marketplace',icon: Store },
+  { id: 'communities', label: 'Komunitas',  icon: Users },
+  { id: 'broadcast',   label: 'Broadcast',  icon: Megaphone },
+  { id: 'channel',     label: 'Channel',    icon: Newspaper },
+];
+
+function Sidebar({ active }) {
+  return (
+    <aside className="w-60 min-h-screen bg-white border-r border-gray-100 flex flex-col flex-shrink-0">
+      <div className="flex items-center gap-2.5 px-5 py-5 border-b border-gray-100">
+        <div className="w-9 h-9 bg-gradient-to-br from-brand-500 to-brand-700 rounded-lg flex items-center justify-center shadow-sm shadow-brand-600/20">
+          <Leaf className="text-white" size={18} />
+        </div>
+        <div>
+          <div className="font-bold text-gray-900 text-[15px] leading-tight">Regrow</div>
+          <div className="text-[11px] text-gray-400 leading-tight">Operator Dashboard</div>
+        </div>
+      </div>
+
+      <nav className="flex-1 p-3 space-y-0.5">
+        {navItems.map(({ id, label, icon: I, badge }) => {
+          const isActive = id === active;
+          return (
+            <a key={id} href={({dashboard:'Dashboard.html',marketplace:'Marketplace.html',communities:'Community.html',broadcast:'Broadcast.html',channel:'Channel.html',pickups:'#'})[id] || '#'}
+               className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                 isActive
+                  ? 'bg-brand-50 text-brand-700'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+               }`}>
+              <I size={16} className={isActive ? 'text-brand-700' : 'text-gray-400'} />
+              <span className="flex-1">{label}</span>
+              {badge ? (
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                  isActive ? 'bg-brand-600 text-white' : 'bg-amber-100 text-amber-700'
+                }`}>{badge}</span>
+              ) : null}
+            </a>
+          );
+        })}
+      </nav>
+
+      {/* Operator card */}
+      <div className="p-3 border-t border-gray-100">
+        <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-brand-700 flex items-center justify-center text-white text-xs font-semibold">
+            RA
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-semibold text-gray-800 truncate">Rina A.</div>
+            <div className="text-[10px] text-gray-400 truncate">Operator · Bandung</div>
+          </div>
+          <button className="text-gray-300 hover:text-gray-600 p-1">
+            <LogOut size={14} />
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// ─── Stat Card ──────────────────────────────────────────────────────────────
+
+function Sparkline({ data, color = '#16a34a' }) {
+  const max = Math.max(...data, 1);
+  return (
+    <svg viewBox="0 0 80 28" className="w-20 h-7" preserveAspectRatio="none">
+      {data.map((v, i) => {
+        const h = (v / max) * 24 + 2;
+        return (
+          <rect key={i}
+                className="sparkline-bar"
+                x={i * (80 / data.length) + 1}
+                y={28 - h}
+                width={(80 / data.length) - 2}
+                height={h}
+                rx="1.5"
+                fill={color}
+                opacity={0.25 + (i / data.length) * 0.7}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+function StatCard({ icon: I, label, value, sub, delta, deltaPositive, accent = 'brand', spark }) {
+  const accents = {
+    brand:  { bg: 'bg-brand-50',   ic: 'text-brand-700',   spark: '#16a34a' },
+    amber:  { bg: 'bg-amber-50',   ic: 'text-amber-700',   spark: '#d97706' },
+    violet: { bg: 'bg-violet-50',  ic: 'text-violet-700',  spark: '#7c3aed' },
+    teal:   { bg: 'bg-teal-50',    ic: 'text-teal-700',    spark: '#0d9488' },
+  }[accent];
+
+  return (
+    <div className="card stat-card p-5 transition hover:shadow-md hover:-translate-y-px">
+      <div className="flex items-start justify-between">
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${accents.bg} ${accents.ic}`}>
+          <I size={17} />
+        </div>
+        {spark && <Sparkline data={spark} color={accents.spark} />}
+      </div>
+      <div className="mt-4 flex items-baseline gap-2">
+        <span className="text-3xl font-bold tracking-tight text-gray-900">{value}</span>
+        {sub && <span className="text-sm text-gray-400 font-medium">{sub}</span>}
+      </div>
+      <div className="mt-1 flex items-center justify-between">
+        <span className="text-xs text-gray-500">{label}</span>
+        {delta != null && (
+          <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${
+            deltaPositive ? 'text-brand-700' : 'text-rose-600'
+          }`}>
+            <TrendingUp size={11} className={deltaPositive ? '' : 'rotate-180'} />
+            {delta}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Toast ──────────────────────────────────────────────────────────────────
+
+function Toast({ toast }) {
+  if (!toast) return null;
+  const isError = toast.kind === 'error';
+  return (
+    <div className="toast fixed bottom-6 right-6 z-50">
+      <div className={`flex items-center gap-2.5 pl-3 pr-4 py-2.5 rounded-lg shadow-lg ${
+        isError ? 'bg-rose-50 border border-rose-200' : 'bg-gray-900 text-white'
+      }`}>
+        {isError
+          ? <XCircle size={16} className="text-rose-600" />
+          : <CheckCircle size={16} className="text-brand-400" />}
+        <span className={`text-sm font-medium ${isError ? 'text-rose-700' : 'text-white'}`}>{toast.msg}</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Grade Modal ────────────────────────────────────────────────────────────
+
+const GRADE_TINTS = {
+  A: { ring: 'ring-brand-200',  bg: 'bg-brand-50',  text: 'text-brand-700',  big: 'text-brand-600',  label: 'Layak jual ulang' },
+  B: { ring: 'ring-blue-200',   bg: 'bg-blue-50',   text: 'text-blue-700',   big: 'text-blue-600',   label: 'Perlu pembersihan' },
+  C: { ring: 'ring-amber-200',  bg: 'bg-amber-50',  text: 'text-amber-700',  big: 'text-amber-600',  label: 'Bahan upcycle' },
+  D: { ring: 'ring-rose-200',   bg: 'bg-rose-50',   text: 'text-rose-700',   big: 'text-rose-600',   label: 'Daur ulang serat' },
+};
+
+function GradeModal({ pickup, grade, onClose }) {
+  if (!pickup || !grade) return null;
+  const t = GRADE_TINTS[grade.grade];
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <div className="text-xs text-gray-400 font-mono">#{pickup.id.slice(0, 8).toUpperCase()}</div>
+            <h3 className="text-base font-bold text-gray-900 mt-0.5">Hasil Penilaian AI</h3>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1">
+            <XCircle size={18} />
+          </button>
+        </div>
+
+        <div className="p-5">
+          {/* Big grade */}
+          <div className={`flex items-center gap-4 p-4 rounded-xl ${t.bg} ring-1 ring-inset ${t.ring}`}>
+            <div className={`w-16 h-16 rounded-xl bg-white flex items-center justify-center shadow-sm`}>
+              <span className={`text-4xl font-bold ${t.big}`}>{grade.grade}</span>
+            </div>
+            <div>
+              <div className={`text-sm font-semibold ${t.text}`}>{t.label}</div>
+              <div className="text-xs text-gray-500 mt-0.5">
+                Keyakinan {Math.round(grade.confidence * 100)}% · {grade.estimated_kg} kg
+              </div>
+            </div>
+          </div>
+
+          {/* Reasoning */}
+          <div className="mt-4 p-3 rounded-lg bg-gray-50 border border-gray-100">
+            <div className="text-[11px] text-gray-400 font-medium uppercase tracking-wider mb-1">
+              Catatan Gemini
+            </div>
+            <p className="text-sm text-gray-700 leading-relaxed">{grade.reasoning}</p>
+          </div>
+
+          {/* Meta */}
+          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <dt className="text-xs text-gray-400">User</dt>
+              <dd className="text-gray-800 font-medium mt-0.5">{pickup.user}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-gray-400">Jenis</dt>
+              <dd className="text-gray-800 font-medium mt-0.5">{pickup.waste_type}</dd>
+            </div>
+          </dl>
+
+          <div className="mt-5 flex gap-2">
+            <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50">
+              Tutup
+            </button>
+            <button className="flex-1 px-4 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium flex items-center justify-center gap-1.5">
+              <CheckCircle size={14} /> Tandai Selesai
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Dashboard ──────────────────────────────────────────────────────────────
+
+function Dashboard() {
+  const [pickups, setPickups] = useState(MOCK_PICKUPS);
+  const [toast, setToast] = useState(null);
+  const [confirming, setConfirming] = useState(null); // pickup id loading
+  const [viewingGrade, setViewingGrade] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch] = useState('');
+
+  // Auto-dismiss toast
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2400);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  // Stats — pickups today
+  const todayCount = useMemo(
+    () => pickups.filter(p => new Date(p.created_at).toDateString() === NOW.toDateString()).length,
+    [pickups]
+  );
+  const pendingGradingCount = useMemo(
+    () => pickups.filter(p => p.status === 'pending' || p.status === 'confirmed' || p.status === 'grading').length,
+    [pickups]
+  );
+  const completedCount = useMemo(
+    () => pickups.filter(p => p.status === 'completed').length,
+    [pickups]
+  );
+  const totalKg = useMemo(
+    () => pickups.filter(p => p.status === 'completed').reduce((s, p) => s + (p.estimated_weight || 0), 0).toFixed(1),
+    [pickups]
+  );
+
+  const recent = useMemo(() => {
+    const sorted = [...pickups].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const filtered = search
+      ? sorted.filter(p =>
+          p.location.toLowerCase().includes(search.toLowerCase()) ||
+          p.user.toLowerCase().includes(search.toLowerCase()) ||
+          p.waste_type.toLowerCase().includes(search.toLowerCase())
+        )
+      : sorted;
+    return filtered.slice(0, 5);
+  }, [pickups, search]);
+
+  // ─── Actions ──────────────────────────────────────────────────────────────
+
+  async function handleConfirm(id) {
+    setConfirming(id);
+    // Simulate API: PATCH /api/pickups/{id}
+    await new Promise(r => setTimeout(r, 700));
+    setPickups(prev => prev.map(p => p.id === id ? { ...p, status: 'confirmed' } : p));
+    setConfirming(null);
+    setToast({ kind: 'success', msg: 'Pickup berhasil dikonfirmasi' });
+  }
+
+  function handleViewGrade(pickup) {
+    const grade = MOCK_GRADES[pickup.id] || {
+      grade: 'B',
+      confidence: 0.84,
+      estimated_kg: pickup.estimated_weight || 5,
+      reasoning: 'Sampah tekstil dalam kondisi cukup baik. Beberapa perlu pembersihan ringan sebelum dijual ulang.',
+    };
+    setViewingGrade({ pickup, grade });
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await new Promise(r => setTimeout(r, 600));
+    setRefreshing(false);
+    setToast({ kind: 'success', msg: 'Data terbaru dimuat' });
+  }
+
+  return (
+    <div className="flex min-h-screen">
+      <Sidebar active="dashboard" />
+
+      <main className="flex-1 min-w-0">
+        {/* Top bar */}
+        <header className="h-16 px-8 bg-white/70 backdrop-blur border-b border-gray-100 flex items-center justify-between sticky top-0 z-20">
+          <div>
+            <div className="text-[11px] text-gray-400 font-medium uppercase tracking-wider">
+              Rabu, 29 April 2026
+            </div>
+            <h1 className="text-[15px] font-semibold text-gray-900 leading-tight">
+              Selamat siang, Rina 👋
+            </h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="relative hidden md:block">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Cari pickup, user, lokasi…"
+                className="w-72 pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white"
+              />
+            </div>
+            <button className="relative w-9 h-9 rounded-lg border border-gray-100 hover:bg-gray-50 flex items-center justify-center text-gray-500">
+              <Bell size={16} />
+              <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-rose-500 rounded-full"></span>
+            </button>
+          </div>
+        </header>
+
+        {/* Content */}
+        <div className="p-8 space-y-6">
+          {/* Page title row */}
+          <div className="flex items-end justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Dashboard</h2>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Ringkasan operasional pickup sampah tekstil hari ini.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={handleRefresh}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 transition">
+                <RefreshCw size={14} className={refreshing ? 'spin' : ''} /> Refresh
+              </button>
+              <button className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition shadow-sm shadow-brand-600/20">
+                <Plus size={14} /> Pickup Baru
+              </button>
+            </div>
+          </div>
+
+          {/* Stats */}
+          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard icon={Package}      label="Pickup hari ini"
+                      value={todayCount}  sub="bookings"
+                      delta="+18%" deltaPositive accent="brand"
+                      spark={[3,4,2,5,6,4,7]} />
+            <StatCard icon={Clock}        label="Menunggu grading"
+                      value={pendingGradingCount} sub="antrian"
+                      delta="−2"   deltaPositive accent="amber"
+                      spark={[5,4,6,3,5,2,3]} />
+            <StatCard icon={CheckCircle}  label="Selesai diproses"
+                      value={completedCount} sub="hari ini"
+                      delta="+24%" deltaPositive accent="violet"
+                      spark={[1,2,2,3,4,5,6]} />
+            <StatCard icon={Scale}        label="Total tonase"
+                      value={totalKg}     sub="kg"
+                      delta="+12%" deltaPositive accent="teal"
+                      spark={[8,12,10,14,11,16,18]} />
+          </section>
+
+          {/* Recent + Quick actions */}
+          <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            {/* Recent table */}
+            <div className="card xl:col-span-2 overflow-hidden p-0">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Pickup Terbaru</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">5 booking paling baru dari WhatsApp</p>
+                </div>
+                <a href="#" className="text-xs font-medium text-brand-700 hover:text-brand-900 inline-flex items-center gap-1">
+                  Lihat semua <ChevronRt size={12} />
+                </a>
+              </div>
+
+              {recent.length === 0 ? (
+                <div className="p-12 text-center">
+                  <p className="text-gray-400 text-sm">Tidak ada pickup yang cocok</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50/70 text-[11px] uppercase tracking-wider text-gray-500">
+                        <th className="text-left px-5 py-2.5 font-semibold">Pickup</th>
+                        <th className="text-left px-3 py-2.5 font-semibold">Lokasi</th>
+                        <th className="text-left px-3 py-2.5 font-semibold">Status</th>
+                        <th className="text-left px-3 py-2.5 font-semibold">Waktu</th>
+                        <th className="text-right px-5 py-2.5 font-semibold">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {recent.map((p) => (
+                        <tr key={p.id} className="hover:bg-gray-50/60 transition-colors group">
+                          <td className="px-5 py-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-100 to-brand-200 flex items-center justify-center text-[11px] font-semibold text-brand-700 flex-shrink-0">
+                                {p.user.split(' ').map(s => s[0]).slice(0,2).join('')}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-medium text-gray-900 truncate">{p.user}</div>
+                                <div className="text-[11px] text-gray-400 flex items-center gap-1.5">
+                                  <Recycle size={10} /> {p.waste_type}
+                                  <span className="text-gray-300">·</span>
+                                  <span className="font-mono">#{p.id.slice(0,6).toUpperCase()}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 max-w-[200px]">
+                            <div className="flex items-start gap-1 text-gray-600 text-[13px]">
+                              <MapPin size={12} className="text-gray-300 mt-0.5 flex-shrink-0" />
+                              <span className="truncate">{p.location}</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <StatusBadge status={p.status} />
+                          </td>
+                          <td className="px-3 py-3 text-gray-500 text-[13px] whitespace-nowrap">
+                            <div>{formatRelative(p.created_at)}</div>
+                            <div className="text-[11px] text-gray-400">{formatTime(p.created_at)}</div>
+                          </td>
+                          <td className="px-5 py-3 text-right">
+                            <div className="inline-flex items-center gap-1">
+                              {p.status === 'pending' && (
+                                <button
+                                  onClick={() => handleConfirm(p.id)}
+                                  disabled={confirming === p.id}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-medium transition disabled:opacity-50"
+                                >
+                                  {confirming === p.id
+                                    ? <RefreshCw size={11} className="spin" />
+                                    : <CheckCircle size={11} />}
+                                  Konfirmasi
+                                </button>
+                              )}
+                              {(p.status === 'graded' || p.status === 'grading') && (
+                                <button
+                                  onClick={() => handleViewGrade(p)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-violet-50 hover:bg-violet-100 text-violet-700 text-xs font-medium transition"
+                                >
+                                  <Eye size={11} /> Lihat Grade
+                                </button>
+                              )}
+                              {(p.status === 'confirmed' || p.status === 'completed') && (
+                                <button className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 text-xs font-medium transition">
+                                  <ChevronRt size={14} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Right column: Quick actions + activity */}
+            <div className="space-y-4">
+              {/* Quick actions */}
+              <div className="card p-5">
+                <h3 className="text-sm font-semibold text-gray-900">Aksi Cepat</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Tugas operator yang menunggu</p>
+
+                <div className="mt-4 space-y-2">
+                  {/* Confirm action */}
+                  <button
+                    onClick={() => {
+                      const next = pickups.find(p => p.status === 'pending');
+                      if (next) handleConfirm(next.id);
+                    }}
+                    disabled={!pickups.some(p => p.status === 'pending')}
+                    className="w-full text-left p-3 rounded-lg border border-gray-100 hover:border-brand-200 hover:bg-brand-50/40 transition group disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-brand-50 group-hover:bg-brand-100 text-brand-700 flex items-center justify-center flex-shrink-0 transition">
+                        <CheckCircle size={15} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-gray-900">Konfirmasi pickup</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                            {pickups.filter(p => p.status === 'pending').length}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">Setujui booking baru dari user</p>
+                      </div>
+                      <ArrowUpRt size={14} className="text-gray-300 group-hover:text-brand-700 mt-1 transition" />
+                    </div>
+                  </button>
+
+                  {/* View grade */}
+                  <button
+                    onClick={() => {
+                      const next = pickups.find(p => p.status === 'graded');
+                      if (next) handleViewGrade(next);
+                    }}
+                    disabled={!pickups.some(p => p.status === 'graded')}
+                    className="w-full text-left p-3 rounded-lg border border-gray-100 hover:border-violet-200 hover:bg-violet-50/40 transition group disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-violet-50 group-hover:bg-violet-100 text-violet-700 flex items-center justify-center flex-shrink-0 transition">
+                        <Eye size={15} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-gray-900">Lihat hasil grading</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">
+                            {pickups.filter(p => p.status === 'graded').length}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">Verifikasi penilaian AI Gemini</p>
+                      </div>
+                      <ArrowUpRt size={14} className="text-gray-300 group-hover:text-violet-700 mt-1 transition" />
+                    </div>
+                  </button>
+
+                  {/* Marketplace */}
+                  <a href="#" className="block p-3 rounded-lg border border-gray-100 hover:border-teal-200 hover:bg-teal-50/40 transition group">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-teal-50 group-hover:bg-teal-100 text-teal-700 flex items-center justify-center flex-shrink-0 transition">
+                        <Store size={15} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-semibold text-gray-900">Buat listing</span>
+                        <p className="text-xs text-gray-500 mt-0.5">Pasarkan batch yang sudah di-grade</p>
+                      </div>
+                      <ArrowUpRt size={14} className="text-gray-300 group-hover:text-teal-700 mt-1 transition" />
+                    </div>
+                  </a>
+                </div>
+              </div>
+
+              {/* Mini activity / today's progress */}
+              <div className="card p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-gray-900">Progres Hari Ini</h3>
+                  <span className="text-[11px] text-gray-400">{todayCount}/10 target</span>
+                </div>
+
+                {/* Progress bar */}
+                <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-brand-500 to-brand-700 rounded-full transition-all"
+                    style={{ width: `${Math.min(100, (todayCount / 10) * 100)}%` }}
+                  />
+                </div>
+
+                <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <div className="text-lg font-bold text-gray-900">{pickups.filter(p => p.status === 'pending').length}</div>
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wider">Pending</div>
+                  </div>
+                  <div className="border-x border-gray-100">
+                    <div className="text-lg font-bold text-gray-900">{pickups.filter(p => p.status === 'grading' || p.status === 'graded').length}</div>
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wider">Grading</div>
+                  </div>
+                  <div>
+                    <div className="text-lg font-bold text-brand-700">{completedCount}</div>
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wider">Selesai</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <Toast toast={toast} />
+      {viewingGrade && (
+        <GradeModal
+          pickup={viewingGrade.pickup}
+          grade={viewingGrade.grade}
+          onClose={() => setViewingGrade(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<Dashboard />);
+</script>
+
+</body>
+</html>
